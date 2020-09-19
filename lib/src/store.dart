@@ -7,6 +7,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 
+import 'package:flutter_hooks/flutter_hooks.dart'
+    show use, Hook, HookState, useStream;
+
 // Developed by Marcelo Glasberg (Aug 2019).
 // Based upon packages redux by Brian Egan, and flutter_redux by Brian Egan and John Ryan.
 // Uses code from package equatable by Felix Angelov.
@@ -1857,3 +1860,78 @@ void _throws(errorMsg, error, StackTrace stackTrace) {
 }
 
 // /////////////////////////////////////////////////////////////////////////////
+
+
+/// A hook to access the redux store
+///
+/// ### Example
+///
+/// ```
+/// class StoreUser extends HookWidget {
+///   @override
+///   Widget build(BuildContext context) {
+///     final store = useStore();
+///     return YourWidgetHierarchy(store: store);
+///   }
+/// }
+/// ```
+Store<S> useStore<S>() => use(_UseStoreHook());
+
+class _UseStoreHook<S> extends Hook<Store<S>> {
+  @override
+  HookState<Store<S>, Hook<Store<S>>> createState() => _UseStoreHookState<S>();
+}
+
+class _UseStoreHookState<S> extends HookState<Store<S>, _UseStoreHook<S>> {
+  @override
+  Store<S> build(BuildContext context, {Object debug}) => StoreProvider.of<S>(context, debug);
+}
+
+/// A hook to access the redux `dispatch` function
+///
+/// ### Example
+///
+/// ```
+/// class StoreUser extends HookWidget {
+///   @override
+///   Widget build(BuildContext context) {
+///     final dispatch = useDispatch<AppState>();
+///     useEffect(() {
+///       dispatch(SomeAction());
+///     }, []);
+///     return YourWidgetHierarchy(dispatch: dispatch);
+///   }
+/// }
+/// ```
+Dispatch useDispatch<S>() => useStore<S>().dispatch;
+
+typedef Selector<State, Output> = Output Function(State state);
+typedef EqualityFn<T> = bool Function(T a, T b);
+
+/// A hook to access the redux store's state. This hook takes a selector function
+/// as an argument. The selector is called with the store state.
+///
+/// This hook takes an optional equality comparison function as the second parameter
+/// that allows you to customize the way the selected state is compared to determine
+/// whether the widget needs to be re-built. The default equality comparison function
+/// is one that uses referential equality.
+///
+/// ### Example
+///
+/// ```
+/// class StoreUser extends HookWidget {
+///   @override
+///   Widget build(BuildContext context) {
+///     final someCount = useSelector<AppState, int>(selectSomeCount);
+///     return YourWidgetHierarchy(someCount: someCount);
+///   }
+/// }
+/// ```
+Output useSelector<State, Output>(Selector<State, Output> selector,
+    [EqualityFn equalityFn]) {
+  final store = useStore<State>();
+  final snap = useStream<Output>(
+      store.onChange.map(selector).distinct(equalityFn),
+      initialData: selector(store.state));
+  return snap.data;
+}
